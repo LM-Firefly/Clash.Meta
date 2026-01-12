@@ -357,7 +357,7 @@ func resolveMetadata(metadata *C.Metadata) (proxy C.Proxy, rule C.Rule, err erro
 		FindProcess: func() {
 			if attemptProcessLookup {
 				attemptProcessLookup = false
-				if !features.CMFA {
+				if !features.Android {
 					// normal check for process
 					uid, path, err := process.FindProcessName(metadata.NetWork.String(), metadata.SrcIP, int(metadata.SrcPort))
 					if err != nil {
@@ -392,6 +392,10 @@ func resolveMetadata(metadata *C.Metadata) (proxy C.Proxy, rule C.Rule, err erro
 		helper.FindProcess = nil
 	}
 
+	if FindProcessMode() == process.FindProcessAlways {
+		findPackageName(metadata)
+	}
+
 	switch mode {
 	case Direct:
 		proxy = proxies["DIRECT"]
@@ -402,6 +406,26 @@ func resolveMetadata(metadata *C.Metadata) (proxy C.Proxy, rule C.Rule, err erro
 		proxy, rule, err = match(metadata, helper)
 	}
 	return
+}
+
+func findPackageName(metadata *C.Metadata) {
+	if !features.Android {
+		uid, path, err := process.FindProcessName(metadata.NetWork.String(), metadata.SrcIP, int(metadata.SrcPort))
+		if err != nil {
+			log.Debugln("[Process] find process %s error: %v", metadata.String(), err)
+		} else {
+			metadata.Process = filepath.Base(path)
+			metadata.ProcessPath = path
+			metadata.Uid = uid
+		}
+	} else {
+		pkg, err := process.FindPackageName(metadata)
+		if err != nil {
+			log.Debugln("[Process] find process %s error: %v", metadata.String(), err)
+		} else {
+			metadata.Process = pkg
+		}
+	}
 }
 
 // processUDP starts a loop to handle udp packet
@@ -647,6 +671,9 @@ func logMetadata(metadata *C.Metadata, rule C.Rule, remoteConn C.Connection) {
 func match(metadata *C.Metadata, helper C.RuleMatchHelper) (C.Proxy, C.Rule, error) {
 	configMux.RLock()
 	defer configMux.RUnlock()
+	if node, ok := resolver.DefaultHosts.Search(metadata.Host, false); ok {
+		metadata.DstIP, _ = node.RandIP()
+	}
 
 	for _, rule := range getRules(metadata) {
 		if matched, ada := rule.Match(metadata, helper); matched {
