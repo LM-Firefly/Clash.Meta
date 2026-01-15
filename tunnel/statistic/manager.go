@@ -10,6 +10,7 @@ import (
 )
 
 var DefaultManager *Manager
+var DefaultRequestNotify = func(_ Tracker) {}
 
 func init() {
 	DefaultManager = &Manager{
