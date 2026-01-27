@@ -166,6 +166,81 @@ func UpdateGeoSite() (err error) {
 	return nil
 }
 
+func UpdateMMDBWithPath(path string) (err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("can't read MMDB file: %w", err)
+	}
+	instance, err := maxminddb.FromBytes(data)
+	if err != nil {
+		return fmt.Errorf("invalid MMDB database file: %s", err)
+	}
+	_ = instance.Close()
+	defer mmdb.ReloadIP()
+	mmdb.IPInstance().Reader.Close()
+	if err = os.WriteFile(C.Path.MMDB(), data, 0o644); err != nil {
+		return fmt.Errorf("can't save MMDB database file: %w", err)
+	}
+	return nil
+}
+
+func UpdateASNWithPath(path string) (err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("can't read ASN file: %w", err)
+	}
+	instance, err := maxminddb.FromBytes(data)
+	if err != nil {
+		return fmt.Errorf("invalid ASN database file: %s", err)
+	}
+	_ = instance.Close()
+	defer mmdb.ReloadASN()
+	mmdb.ASNInstance().Reader.Close()
+	if err = os.WriteFile(C.Path.ASN(), data, 0o644); err != nil {
+		return fmt.Errorf("can't save ASN database file: %w", err)
+	}
+	return nil
+}
+
+func UpdateGeoIpWithPath(path string) (err error) {
+	geoLoader, err := geodata.GetGeoDataLoader("standard")
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("can't read GeoIP file: %w", err)
+	}
+	if _, err = geoLoader.LoadIPByBytes(data, "cn"); err != nil {
+		return fmt.Errorf("invalid GeoIP database file: %s", err)
+	}
+	defer geodata.ClearGeoIPCache()
+	if err = os.WriteFile(C.Path.GeoIP(), data, 0o644); err != nil {
+		return fmt.Errorf("can't save GeoIP database file: %w", err)
+	}
+	return nil
+}
+
+// UpdateGeoSiteWithPath updates geosite database from a local file path.
+func UpdateGeoSiteWithPath(path string) (err error) {
+	geoLoader, err := geodata.GetGeoDataLoader("standard")
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("can't read GeoSite file: %w", err)
+	}
+	if _, err = geoLoader.LoadSiteByBytes(data, "cn"); err != nil {
+		return fmt.Errorf("invalid GeoSite database file: %s", err)
+	}
+	defer geodata.ClearGeoSiteCache()
+	if err = os.WriteFile(C.Path.GeoSite(), data, 0o644); err != nil {
+		return fmt.Errorf("can't save GeoSite database file: %w", err)
+	}
+	return nil
+}
+
 func updateGeoDatabases() error {
 	defer runtime.GC()
 

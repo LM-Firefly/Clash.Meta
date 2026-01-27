@@ -14,28 +14,36 @@ var DefaultRequestNotify = func(_ Tracker) {}
 
 func init() {
 	DefaultManager = &Manager{
-		uploadTemp:    atomic.NewInt64(0),
-		downloadTemp:  atomic.NewInt64(0),
-		uploadBlip:    atomic.NewInt64(0),
-		downloadBlip:  atomic.NewInt64(0),
-		uploadTotal:   atomic.NewInt64(0),
-		downloadTotal: atomic.NewInt64(0),
-		pid:           int32(os.Getpid()),
+		uploadTemp:      atomic.NewInt64(0),
+		downloadTemp:    atomic.NewInt64(0),
+		uploadBlip:      atomic.NewInt64(0),
+		downloadBlip:    atomic.NewInt64(0),
+		uploadTotal:     atomic.NewInt64(0),
+		downloadTotal:   atomic.NewInt64(0),
+		uploadBlipAll:   atomic.NewInt64(0),
+		downloadBlipAll: atomic.NewInt64(0),
+		prevUploadAll:   atomic.NewInt64(0),
+		prevDownloadAll: atomic.NewInt64(0),
+		pid:             int32(os.Getpid()),
 	}
 
 	go DefaultManager.handle()
 }
 
 type Manager struct {
-	connections   xsync.Map[string, Tracker]
-	uploadTemp    atomic.Int64
-	downloadTemp  atomic.Int64
-	uploadBlip    atomic.Int64
-	downloadBlip  atomic.Int64
-	uploadTotal   atomic.Int64
-	downloadTotal atomic.Int64
-	pid           int32
-	memory        uint64
+	connections     xsync.Map[string, Tracker]
+	uploadTemp      atomic.Int64
+	downloadTemp    atomic.Int64
+	uploadBlip      atomic.Int64
+	downloadBlip    atomic.Int64
+	uploadTotal     atomic.Int64
+	downloadTotal   atomic.Int64
+	uploadBlipAll   atomic.Int64
+	downloadBlipAll atomic.Int64
+	prevUploadAll   atomic.Int64
+	prevDownloadAll atomic.Int64
+	pid             int32
+	memory          uint64
 }
 
 func (m *Manager) Join(c Tracker) {
@@ -77,6 +85,27 @@ func (m *Manager) Total() (up, down int64) {
 	return m.uploadTotal.Load(), m.downloadTotal.Load()
 }
 
+func (m *Manager) NowTraffic(onlyStatisticsProxy bool) (int64, int64) {
+	if onlyStatisticsProxy {
+		return m.Now()
+	}
+	return m.uploadBlipAll.Load(), m.downloadBlipAll.Load()
+}
+
+func (m *Manager) TotalTraffic(onlyStatisticsProxy bool) (int64, int64) {
+	if onlyStatisticsProxy {
+		return m.Total()
+	}
+	var up, down int64
+	m.Range(func(c Tracker) bool {
+		info := c.Info()
+		up += info.UploadTotal.Load()
+		down += info.DownloadTotal.Load()
+		return true
+	})
+	return up, down
+}
+
 func (m *Manager) Memory() uint64 {
 	m.updateMemory()
 	return m.memory
@@ -111,6 +140,10 @@ func (m *Manager) ResetStatistic() {
 	m.downloadTemp.Store(0)
 	m.downloadBlip.Store(0)
 	m.downloadTotal.Store(0)
+	m.uploadBlipAll.Store(0)
+	m.downloadBlipAll.Store(0)
+	m.prevUploadAll.Store(0)
+	m.prevDownloadAll.Store(0)
 }
 
 func (m *Manager) handle() {
@@ -119,6 +152,19 @@ func (m *Manager) handle() {
 	for range ticker.C {
 		m.uploadBlip.Store(m.uploadTemp.Swap(0))
 		m.downloadBlip.Store(m.downloadTemp.Swap(0))
+		var totalUp, totalDown int64
+		m.Range(func(c Tracker) bool {
+			info := c.Info()
+			totalUp += info.UploadTotal.Load()
+			totalDown += info.DownloadTotal.Load()
+			return true
+		})
+		prevUp := m.prevUploadAll.Load()
+		prevDown := m.prevDownloadAll.Load()
+		m.uploadBlipAll.Store(totalUp - prevUp)
+		m.downloadBlipAll.Store(totalDown - prevDown)
+		m.prevUploadAll.Store(totalUp)
+		m.prevDownloadAll.Store(totalDown)
 	}
 }
 
